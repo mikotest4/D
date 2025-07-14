@@ -61,6 +61,11 @@ CMD_TXT = """<blockquote><b>» ᴀᴅᴍɪɴ ᴄᴏᴍᴍᴀɴᴅs:</b></blockqu
 <b>›› /premium_users :</b> ʟɪsᴛ ᴀʟʟ ᴘʀᴇᴍɪᴜᴍ ᴜꜱᴇʀs
 <b>›› /remove_premium :</b> ʀᴇᴍᴏᴠᴇ ᴘʀᴇᴍɪᴜᴍ ꜰʀᴏᴍ ᴀ ᴜꜱᴇʀ
 <b>›› /myplan :</b> ᴄʜᴇᴄᴋ ʏᴏᴜʀ ᴘʀᴇᴍɪᴜᴍ sᴛᴀᴛᴜs
+
+<blockquote><b>» sᴜᴘᴇʀ ᴘʀɪᴍᴇ ᴄᴏᴍᴍᴀɴᴅs:</b></blockquote>
+<b>›› /prime :</b> ᴀᴅᴅ sᴜᴘᴇʀ ᴘʀɪᴍᴇ ᴜꜱᴇʀ
+<b>›› /sp_users :</b> ʟɪsᴛ sᴜᴘᴇʀ ᴘʀɪᴍᴇ ᴜꜱᴇʀs
+<b>›› /remove_sp :</b> ʀᴇᴍᴏᴠᴇ sᴜᴘᴇʀ ᴘʀɪᴍᴇ
 <b>›› /count :</b> ᴄᴏᴜɴᴛ verifications
 """
 #--------------------------------------------
@@ -83,35 +88,24 @@ SCREENSHOT_URL = os.environ.get("SCREENSHOT_URL", f"t.me/Lusiferhdhdjsj")
 #Time and its price
 #7 Days
 PRICE1 = os.environ.get("PRICE1", "50 ʀs")
-#1 Month
 PRICE2 = os.environ.get("PRICE2", "130 ʀs")
-#3 Month
 PRICE3 = os.environ.get("PRICE3", "299 ʀs")
-#6 Month
-PRICE4 = os.environ.get("PRICE4", "499 ʀs")
-#1 Year
-PRICE5 = os.environ.get("PRICE5", "899 ʀs")
+PRICE4 = os.environ.get("PRICE4", "599 ʀs")
+PRICE5 = os.environ.get("PRICE5", "999 ʀs")
+#--------------------------------------------
+#Get FILE
+LOGGER = logging.getLogger(__name__)
 
-#===================(END)========================#
-
-LOG_FILE_NAME = "filesharingbot.txt"
-
+#==========================(LOGGER)===========================#
 logging.basicConfig(
-    level=logging.INFO,
-    format="[%(asctime)s - %(levelname)s] - %(name)s - %(message)s",
-    datefmt='%d-%b-%y %H:%M:%S',
+    format='%(name)s - %(levelname)s - %(message)s',
     handlers=[
         RotatingFileHandler(
-            LOG_FILE_NAME,
+            "logs.txt",
             maxBytes=50000000,
             backupCount=10
         ),
         logging.StreamHandler()
-    ]
+    ],
+    level=logging.INFO
 )
-logging.getLogger("pyrogram").setLevel(logging.WARNING)
-
-
-def LOGGER(name: str) -> logging.Logger:
-    return logging.getLogger(name)
-   
