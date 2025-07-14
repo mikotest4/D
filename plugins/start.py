@@ -3,7 +3,7 @@ import os
 import random
 import sys
 import re
-import string 
+import string
 import string as rohit
 import time
 from datetime import datetime, timedelta
@@ -11,16 +11,18 @@ from pytz import timezone
 from pyrogram import Client, filters, __version__
 from pyrogram.enums import ParseMode, ChatAction
 from pyrogram.types import (
-    Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, 
+    Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery,
     ReplyKeyboardMarkup, ChatInviteLink, ChatPrivileges
 )
 from pyrogram.errors.exceptions.bad_request_400 import UserNotParticipant
 from pyrogram.errors import FloodWait, UserIsBlocked, InputUserDeactivated, UserNotParticipant
+
 from bot import Bot
 from config import *
 from helper_func import *
 from database.database import *
 from database.db_premium import *
+from database.db_super_prime import is_super_prime_user
 
 BAN_SUPPORT = f"{BAN_SUPPORT}"
 TUT_VID = f"{TUT_VID}"
@@ -52,7 +54,7 @@ async def start_command(client: Client, message: Message):
     if user_id in await db.get_all_admins():
         verify_status = {
             'is_verified': True,
-            'verify_token': None, 
+            'verify_token': None,
             'verified_time': time.time(),
             'link': ""
         }
@@ -76,7 +78,7 @@ async def start_command(client: Client, message: Message):
                 if verify_status['verify_token'] != token:
                     return await message.reply("Your token is invalid or expired. Try again by clicking /start.")
                 await db.update_verify_status(id, is_verified=True, verified_time=time.time())
-                
+
                 current = await db.get_verify_count(id)
                 await db.set_verify_count(id, current + 1)
                 if verify_status["link"] == "":
@@ -93,9 +95,10 @@ async def start_command(client: Client, message: Message):
                 await db.update_verify_status(id, verify_token=token, link="")
                 link = await get_shortlink(SHORTLINK_URL, SHORTLINK_API, f'https://telegram.dog/{client.username}?start=verify_{token}')
                 btn = [
-                    [InlineKeyboardButton("• ᴏᴘᴇɴ ʟɪɴᴋ •", url=link), 
-                    InlineKeyboardButton('• ᴛᴜᴛᴏʀɪᴀʟ •', url=TUT_VID)],
-                    [InlineKeyboardButton('• ʙᴜʏ ᴘʀᴇᴍɪᴜᴍ •', callback_data='premium')]
+                    [InlineKeyboardButton("• ᴏᴘᴇɴ ʟɪɴᴋ •", url=link),
+                     InlineKeyboardButton('• ᴛᴜᴛᴏʀɪᴀʟ •', url=TUT_VID)],
+                    [InlineKeyboardButton('• ʙᴜʏ ᴘʀᴇᴍɪᴜᴍ •', callback_data='premium'),
+                     InlineKeyboardButton('• sᴜᴘᴇʀ ᴘʀɪᴍᴇ •', callback_data='super_prime')]
                 ]
                 return await message.reply(
                     f"𝗬𝗼𝘂𝗿 𝘁𝗼𝗸𝗲𝗻 𝗵𝗮𝘀 𝗲𝘅𝗽𝗶𝗿𝗲𝗱. 𝗣𝗹𝗲𝗮𝘀𝗲 𝗿𝗲𝗳𝗿𝗲𝘀𝗵 𝘆𝗼𝘂𝗿 𝘁𝗼𝗸𝗲𝗻 𝘁𝗼 𝗰𝗼𝗻𝘁𝗶𝗻𝘂𝗲..\n\n<b>Tᴏᴋᴇɴ Tɪᴍᴇᴏᴜᴛ:</b> {get_exp_time(VERIFY_EXPIRE)}\n\n<b>ᴡʜᴀᴛ ɪs ᴛʜᴇ ᴛᴏᴋᴇɴ??</b>\n\nᴛʜɪs ɪs ᴀɴ ᴀᴅs ᴛᴏᴋᴇɴ. ᴘᴀssɪɴɢ ᴏɴᴇ ᴀᴅ ᴀʟʟᴏᴡs ʏᴏᴜ ᴛᴏ ᴜsᴇ ᴛʜᴇ ʙᴏᴛ ғᴏʀ {get_exp_time(VERIFY_EXPIRE)}</b>",
@@ -148,72 +151,67 @@ async def start_command(client: Client, message: Message):
 
         temp_msg = await message.reply("<b>Please wait...</b>")
         try:
-            messages = await get_messages(client, ids)
+            # Send files with Super Prime logic
+            for _id in ids:
+                try:
+                    msg = await client.get_messages(client.db_channel.id, _id)
+                    caption = (CUSTOM_CAPTION.format(previouscaption="" if not msg.caption else msg.caption.html,
+                                                     filename=msg.document.file_name) if bool(CUSTOM_CAPTION) and bool(msg.document)
+                               else ("" if not msg.caption else msg.caption.html))
+                    reply_markup = msg.reply_markup if DISABLE_CHANNEL_BUTTON else None
+
+                    # Super Prime logic
+                    is_super_prime = await is_super_prime_user(user_id)
+                    protect_content = False if is_super_prime else PROTECT_CONTENT
+
+                    if msg.document:
+                        await message.reply_document(
+                            document=msg.document.file_id,
+                            caption=caption,
+                            protect_content=protect_content,
+                            reply_markup=reply_markup
+                        )
+                    elif msg.video:
+                        await message.reply_video(
+                            video=msg.video.file_id,
+                            caption=caption,
+                            protect_content=protect_content,
+                            reply_markup=reply_markup
+                        )
+                    elif msg.photo:
+                        await message.reply_photo(
+                            photo=msg.photo.file_id,
+                            caption=caption,
+                            protect_content=protect_content,
+                            reply_markup=reply_markup
+                        )
+                    else:
+                        # fallback to copy for other types
+                        await msg.copy(
+                            chat_id=message.from_user.id,
+                            caption=caption,
+                            parse_mode=ParseMode.HTML,
+                            reply_markup=reply_markup,
+                            protect_content=protect_content
+                        )
+                except Exception as e:
+                    print(f"Error sending file: {e}")
+                    await message.reply("File not found or expired!")
         except Exception as e:
             await message.reply_text("Something went wrong!")
             print(f"Error getting messages: {e}")
             return
         finally:
             await temp_msg.delete()
+        return
 
-        codeflix_msgs = []
-        for msg in messages:
-            caption = (CUSTOM_CAPTION.format(previouscaption="" if not msg.caption else msg.caption.html, 
-                                             filename=msg.document.file_name) if bool(CUSTOM_CAPTION) and bool(msg.document)
-                       else ("" if not msg.caption else msg.caption.html))
-
-            reply_markup = msg.reply_markup if DISABLE_CHANNEL_BUTTON else None
-
-            try:
-                copied_msg = await msg.copy(chat_id=message.from_user.id, caption=caption, parse_mode=ParseMode.HTML, 
-                                            reply_markup=reply_markup, protect_content=PROTECT_CONTENT)
-                codeflix_msgs.append(copied_msg)
-            except FloodWait as e:
-                await asyncio.sleep(e.x)
-                copied_msg = await msg.copy(chat_id=message.from_user.id, caption=caption, parse_mode=ParseMode.HTML, 
-                                            reply_markup=reply_markup, protect_content=PROTECT_CONTENT)
-                codeflix_msgs.append(copied_msg)
-            except Exception as e:
-                print(f"Failed to send message: {e}")
-                pass
-
-        if FILE_AUTO_DELETE > 0:
-            notification_msg = await message.reply(
-                f"<b>Tʜɪs Fɪʟᴇ ᴡɪʟʟ ʙᴇ Dᴇʟᴇᴛᴇᴅ ɪɴ  {get_exp_time(FILE_AUTO_DELETE)}. Pʟᴇᴀsᴇ sᴀᴠᴇ ᴏʀ ғᴏʀᴡᴀʀᴅ ɪᴛ ᴛᴏ ʏᴏᴜʀ sᴀᴠᴇᴅ ᴍᴇssᴀɢᴇs ʙᴇғᴏʀᴇ ɪᴛ ɢᴇᴛs Dᴇʟᴇᴛᴇᴅ.</b>"
-            )
-
-            await asyncio.sleep(FILE_AUTO_DELETE)
-
-            for snt_msg in codeflix_msgs:    
-                if snt_msg:
-                    try:    
-                        await snt_msg.delete()  
-                    except Exception as e:
-                        print(f"Error deleting message {snt_msg.id}: {e}")
-
-            try:
-                reload_url = (
-                    f"https://t.me/{client.username}?start={message.command[1]}"
-                    if message.command and len(message.command) > 1
-                    else None
-                )
-                keyboard = InlineKeyboardMarkup(
-                    [[InlineKeyboardButton("ɢᴇᴛ ғɪʟᴇ ᴀɢᴀɪɴ!", url=reload_url)]]
-                ) if reload_url else None
-
-                await notification_msg.edit(
-                    "<b>ʏᴏᴜʀ ᴠɪᴅᴇᴏ / ꜰɪʟᴇ ɪꜱ ꜱᴜᴄᴄᴇꜱꜱꜰᴜʟʟʏ ᴅᴇʟᴇᴛᴇᴅ !!\n\nᴄʟɪᴄᴋ ʙᴇʟᴏᴡ ʙᴜᴛᴛᴏɴ ᴛᴏ ɢᴇᴛ ʏᴏᴜʀ ᴅᴇʟᴇᴛᴇᴅ ᴠɪᴅᴇᴏ / ꜰɪʟᴇ 👇</b>",
-                    reply_markup=keyboard
-                )
-            except Exception as e:
-                print(f"Error updating notification with 'Get File Again' button: {e}")
     else:
         reply_markup = InlineKeyboardMarkup(
             [
                 [InlineKeyboardButton("ᴄᴜᴛᴇ ʜᴇᴀᴠᴇɴ 10 ᴍᴏʀᴇ ᴍᴇᴍʙᴇʀs", url="https://t.me/+S95mGGbWHFRmNjM1")],
                 [
-                    InlineKeyboardButton("• ᴀʙᴏᴜᴛ", callback_data = "about"),
-                    InlineKeyboardButton('ʜᴇʟᴘ •', callback_data = "help")
+                    InlineKeyboardButton("• ᴀʙᴏᴜᴛ", callback_data="about"),
+                    InlineKeyboardButton('ʜᴇʟᴘ •', callback_data="help")
                 ]
             ]
         )
@@ -228,7 +226,6 @@ async def start_command(client: Client, message: Message):
             ),
             reply_markup=reply_markup,
             message_effect_id=5104841245755180586)  # 🔥
-        
         return
 
 #=====================================================================================##
@@ -263,7 +260,7 @@ async def not_joined(client: Client, message: Message):
 
                     # Try to get existing invite link first
                     link = await db.get_invite_link(chat_id)
-                    
+
                     # If no valid link exists, create a new one
                     if not link:
                         if mode == "on" and not data.username:
@@ -303,7 +300,7 @@ async def not_joined(client: Client, message: Message):
             buttons.append([
                 InlineKeyboardButton(
                     text='♻️ Tʀʏ Aɢᴀɪɴ',
-                    url=f"https://t.me/{client.username}?start={message.command[1]}" if message.command and len(message.command) > 1 else f"https://t.me/{client.username}"
+                    url=f"<https://t.me/{client.username}?start={message.command>[1]}" if message.command and len(message.command) > 1 else f"https://t.me/{client.username}"
                 )
             ])
         except IndexError:
@@ -333,10 +330,10 @@ async def not_joined(client: Client, message: Message):
 @Bot.on_message(filters.command('myplan') & filters.private)
 async def check_plan(client: Client, message: Message):
     user_id = message.from_user.id
-    
+
     try:
         is_premium = await is_premium_user(user_id)
-        
+
         if is_premium:
             # Get premium user details
             user_data = await get_premium_user_data(user_id)
@@ -347,14 +344,14 @@ async def check_plan(client: Client, message: Message):
                 status_message = "<b>✅ Premium Status: Active</b>\n\n<b>Expires:</b> Unknown"
         else:
             status_message = "<b>❌ Premium Status: Not Active</b>\n\n<i>Contact @Yae_X_Miko to purchase premium.</i>"
-            
+
     except Exception as e:
         status_message = f"<b>❌ Error checking premium status:</b>\n<code>{str(e)}</code>"
-    
+
     # Ensure message is not empty
     if not status_message or status_message.strip() == "":
         status_message = "<b>❌ Unable to retrieve plan status. Please contact support.</b>"
-    
+
     await message.reply(status_message)
 
 #=====================================================================================##
@@ -491,8 +488,8 @@ async def total_verify_count_cmd(client, message: Message):
 #=====================================================================================##
 
 @Bot.on_message(filters.command('commands') & filters.private & admin)
-async def bcmd(bot: Bot, message: Message):        
-    reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton("• ᴄʟᴏsᴇ •", callback_data = "close")]])
-    await message.reply(text=CMD_TXT, reply_markup = reply_markup, quote= True)
+async def bcmd(bot: Bot, message: Message):
+    reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton("• ᴄʟᴏsᴇ •", callback_data="close")]])
+    await message.reply(text=CMD_TXT, reply_markup=reply_markup, quote=True)
 
 #=====================================================================================##
