@@ -3,6 +3,7 @@ from bot import Bot
 from config import *
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from database.database import *
+from plugins.super_prime import handle_super_prime_callback, handle_sp_admin_callback
 import urllib.parse
 import requests
 import io
@@ -55,6 +56,14 @@ async def generate_upi_qr_external(upi_id, amount, plan_name="Premium"):
 @Bot.on_callback_query()
 async def cb_handler(client: Bot, query: CallbackQuery):
     data = query.data
+
+    # Handle Super Prime callbacks first
+    if data == "super_prime" or data.startswith("sp_"):
+        return await handle_super_prime_callback(client, query)
+    
+    # Handle Super Prime admin callbacks
+    if data.startswith("sp_approve_") or data.startswith("sp_reject_"):
+        return await handle_sp_admin_callback(client, query)
 
     if data == "help":
         await query.message.edit_text(
@@ -117,357 +126,398 @@ async def cb_handler(client: Bot, query: CallbackQuery):
 
     # Handle plan selection callbacks
     elif data.startswith("plan_"):
-        plan_key = data.split("_")[1]
+        plan_key = data.replace("plan_", "")
         plan = PLANS.get(plan_key)
         
         if plan:
-            await query.message.edit_caption(
-                caption=(
-                    f"📋 Selected Plan: {plan['duration']} - ₹{plan['price']}\n\n"
-                    f"💳 Please select your payment method:"
-                ),
+            await query.message.edit_text(
+                f"💎 <b>Premium Plan - {plan['duration']}</b>\n\n"
+                f"💰 <b>Price:</b> ₹{plan['price']}\n"
+                f"⏰ <b>Duration:</b> {plan['duration']}\n\n"
+                f"Choose your payment method:",
                 reply_markup=InlineKeyboardMarkup([
-                    [
-                        InlineKeyboardButton("UPI 1", callback_data=f"payment_upi1_{plan_key}"),
-                        InlineKeyboardButton("UPI 2", callback_data=f"payment_upi2_{plan_key}")
-                    ],
-                    [
-                        InlineKeyboardButton("Amazon Gift Card", callback_data=f"payment_gift_{plan_key}")
-                    ],
-                    [
-                        InlineKeyboardButton("‹ Back to Plans", callback_data="premium"),
-                        InlineKeyboardButton("🔒 Close", callback_data="close")
-                    ]
+                    [InlineKeyboardButton("💳 UPI Payment", callback_data=f"upi_{plan_key}")],
+                    [InlineKeyboardButton("🎁 Gift Card", callback_data=f"gift_{plan_key}")],
+                    [InlineKeyboardButton("🔙 Back", callback_data="premium")]
                 ])
             )
 
-    # Handle UPI payment method selection
-    elif data.startswith("payment_upi1_") or data.startswith("payment_upi2_"):
-        parts = data.split("_")
-        payment_method = parts[1]
-        plan_key = parts[2]
+    # Handle UPI payment selection
+    elif data.startswith("upi_"):
+        plan_key = data.replace("upi_", "")
         plan = PLANS.get(plan_key)
         
         if plan:
-            upi_id = UPI_1 if payment_method == "upi1" else UPI_2
-            
-            # Store payment info for screenshot handling
-            user_id = query.from_user.id
-            pending_payments[user_id] = {
-                "plan": plan_key,
-                "amount": plan['price'],
-                "duration": plan['duration'],
-                "upi_method": payment_method,
-                "upi_id": upi_id
+            # Store payment info
+            pending_payments[query.from_user.id] = {
+                'plan': plan_key,
+                'amount': plan['price'],
+                'duration': plan['duration'],
+                'days': plan['days']
             }
             
             # Generate QR code
-            qr_image = await generate_upi_qr_external(upi_id, plan['price'], plan['duration'])
+            qr_image = await generate_upi_qr_external(UPI_1, plan['price'], f"Premium {plan['duration']}")
             
             if qr_image:
                 await query.message.delete()
                 await client.send_photo(
-                    chat_id=query.message.chat.id,
+                    chat_id=query.from_user.id,
                     photo=qr_image,
                     caption=(
-                        f"📝 ɪɴsᴛʀᴜᴄᴛɪᴏɴs:\n"
-                        f"1. sᴄᴀɴ ᴛʜᴇ Qʀ ᴄᴏᴅᴇ ᴀʙᴏᴠᴇ ᴏʀ ᴘᴀʏ ᴛᴏ Uᴘɪ ɪᴅ\n"
-                        f"2. ᴘᴀʏ ᴇxᴀᴄᴛʟʏ ₹{plan['price']}.\n"
-                        f"3. ᴄʟɪᴄᴋ ᴏɴ ɪ ʜᴀᴠᴇ ᴘᴀɪᴅ.\n\n"
-                        f"ɴᴏᴛᴇ: ɪꜰ ʏᴏᴜ ᴍᴀᴋᴇ ᴘᴀʏᴍᴇɴᴛ ᴀᴛ ɴɪɢʜᴛ ᴀꜰᴛᴇʀ 11 ᴘᴍ ᴛʜᴀɴ ʏᴏᴜ ʜᴀᴠᴇ ᴛᴏ ᴡᴀɪᴛ ꜰᴏʀ ᴍᴏʀɴɪɴɢ ʙᴇᴄᴀᴜsᴇ ᴏᴡɴᴇʀ ɪs sʟᴇᴇᴘɪɴɢ ᴛʜᴀᴛ's ᴡʜʏ ʜᴇ ᴄᴀɴ'ᴛ ᴀᴄᴛɪᴠᴇ ʏᴏᴜʀ ᴘʀᴇᴍɪᴜᴍ. ɪꜰ ᴏᴡɴᴇʀ ɪs ᴏɴʟɪɴᴇ ᴛʜᴀɴ ʏᴏᴜʀ ᴘʀᴇᴍɪᴜᴍ ᴡɪʟʟ ᴀᴄᴛɪᴠᴇ ɪɴ ᴀɴ ʜᴏᴜʀ. sᴏ ᴘᴀʏ ᴀᴛ ʏᴏᴜʀ ᴏᴡɴ ʀɪsᴋ ᴀꜰᴛᴇʀ ɴɪɢʜᴛ 11 ᴘᴍ. ᴅᴏɴ'ᴛ ʙʟᴀᴍᴇ ᴏᴡɴᴇʀ."
+                        f"💎 <b>Premium Payment</b>\n\n"
+                        f"💰 <b>Amount:</b> ₹{plan['price']}\n"
+                        f"⏰ <b>Duration:</b> {plan['duration']}\n"
+                        f"💳 <b>UPI ID:</b> <code>{UPI_1}</code>\n\n"
+                        f"📱 <b>Steps:</b>\n"
+                        f"1. Scan QR code or copy UPI ID\n"
+                        f"2. Pay exactly ₹{plan['price']}\n"
+                        f"3. Take screenshot of payment\n"
+                        f"4. Send screenshot here\n\n"
+                        f"⚠️ <b>Important:</b> Payment amount must be exact!"
                     ),
                     reply_markup=InlineKeyboardMarkup([
-                        [
-                            InlineKeyboardButton("✅ I Have Paid", callback_data=f"paid_{user_id}")
-                        ],
-                        [
-                            InlineKeyboardButton("‹ Back to Plans", callback_data="premium"),
-                            InlineKeyboardButton("🔒 Close", callback_data="close")
-                        ]
+                        [InlineKeyboardButton("✅ Payment Done", callback_data=f"payment_done_{plan_key}")],
+                        [InlineKeyboardButton("❌ Cancel", callback_data="cancel_payment")]
                     ])
                 )
+                
+                waiting_for_screenshot[query.from_user.id] = True
             else:
-                await query.answer("Failed to generate QR code. Please try again.", show_alert=True)
+                await query.answer("❌ Failed to generate QR code. Please try again.", show_alert=True)
 
-    # Handle "I Have Paid" button
-    elif data.startswith("paid_"):
-        user_id = int(data.split("_")[1])
+    elif data.startswith("payment_done_"):
+        plan_key = data.replace("payment_done_", "")
+        plan = PLANS.get(plan_key)
         
-        if user_id == query.from_user.id and user_id in pending_payments:
-            payment_info = pending_payments[user_id]
-            
-            # Mark user as waiting for screenshot
-            waiting_for_screenshot[user_id] = True
-            
-            await query.message.edit_caption(
-                caption=(
-                    f"📸 ᴘʟᴇᴀsᴇ sᴇɴᴅ ᴘᴀʏᴍᴇɴᴛ sᴄʀᴇᴇɴsʜᴏᴛ\n\n"
-                    f"📋 ᴘʟᴀɴ: {payment_info['duration']} - ₹{payment_info['amount']}\n\n"
-                    f"📤 sᴇɴᴅ ʏᴏᴜʀ ᴘᴀʏᴍᴇɴᴛ sᴄʀᴇᴇɴsʜᴏᴛ ɴᴏᴡ.\n"
-                    f"🔄 sᴄʀᴇᴇɴsʜᴏᴛ ᴡɪʟʟ ʙᴇ ꜰᴏʀᴡᴀʀᴅᴇᴅ ᴛᴏ ᴏᴡɴᴇʀ ꜰᴏʀ ᴠᴇʀɪꜰɪᴄᴀᴛɪᴏɴ.\n"
-                    f"⚡ ᴘʀᴇᴍɪᴜᴍ ᴡɪʟʟ ʙᴇ ᴀᴄᴛɪᴠᴀᴛᴇᴅ ᴀꜰᴛᴇʀ ᴠᴇʀɪꜰɪᴄᴀᴛɪᴏɴ."
-                ),
-                reply_markup=InlineKeyboardMarkup([
-                    [
-                        InlineKeyboardButton("‹ Back to Payment", callback_data=f"payment_{payment_info['upi_method']}_{payment_info['plan']}"),
-                        InlineKeyboardButton("🔒 Close", callback_data="close")
-                    ]
-                ])
-            )
-        else:
-            await query.answer("Invalid payment session. Please start again.", show_alert=True)
+        await query.message.edit_caption(
+            f"💎 <b>Premium Payment Confirmation</b>\n\n"
+            f"💰 <b>Amount:</b> ₹{plan['price']}\n"
+            f"⏰ <b>Duration:</b> {plan['duration']}\n\n"
+            f"📸 <b>Please send your payment screenshot now</b>\n\n"
+            f"⚠️ Your premium will be activated after verification.",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("❌ Cancel", callback_data="cancel_payment")]
+            ])
+        )
 
-    # Handle Amazon Gift Card payment
-    elif data.startswith("payment_gift_"):
-        plan_key = data.split("_")[2]
+    elif data == "cancel_payment":
+        user_id = query.from_user.id
+        if user_id in pending_payments:
+            del pending_payments[user_id]
+        if user_id in waiting_for_screenshot:
+            del waiting_for_screenshot[user_id]
+        
+        await query.message.edit_text(
+            "❌ <b>Payment cancelled</b>\n\n"
+            "You can try again anytime by using the premium option.",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔄 Try Again", callback_data="premium")]
+            ])
+        )
+
+    # Handle gift card payment
+    elif data.startswith("gift_"):
+        plan_key = data.replace("gift_", "")
         plan = PLANS.get(plan_key)
         
         if plan:
-            user_id = query.from_user.id
-            pending_gift_cards[user_id] = {
-                "plan": plan_key,
-                "amount": plan['price'],
-                "duration": plan['duration']
+            # Store gift card info
+            pending_gift_cards[query.from_user.id] = {
+                'plan': plan_key,
+                'amount': plan['price'],
+                'duration': plan['duration'],
+                'days': plan['days']
             }
             
-            # Send text message instead of photo to avoid URL error
-            await query.message.edit_caption(
-                caption=(
-                    f"🎁 ᴀᴍᴀᴢᴏɴ ɢɪꜰᴛ ᴄᴀʀᴅ ᴘᴀʏᴍᴇɴᴛ\n\n"
-                    f"📋 ᴘʟᴀɴ: {plan['duration']} - ₹{plan['price']}\n\n"
-                    f"📝 ɪɴsᴛʀᴜᴄᴛɪᴏɴs:\n"
-                    f"1. ᴘᴜʀᴄʜᴀsᴇ ᴀᴍᴀᴢᴏɴ ɢɪꜰᴛ ᴄᴀʀᴅ ᴡᴏʀᴛʜ ₹{plan['price']}\n"
-                    f"2. sᴇɴᴅ ᴛʜᴇ ɢɪꜰᴛ ᴄᴀʀᴅ ᴄᴏᴅᴇ ᴛᴏ ᴀᴅᴍɪɴ\n"
-                    f"3. ʏᴏᴜʀ ᴘʀᴇᴍɪᴜᴍ ᴡɪʟʟ ʙᴇ ᴀᴄᴛɪᴠᴀᴛᴇᴅ ᴀꜰᴛᴇʀ ᴠᴇʀɪꜰɪᴄᴀᴛɪᴏɴ\n"
-                    f"4. ʏᴏᴜ ʜᴀᴠᴇ ᴛᴏ ʙᴜʏ ᴇxᴀᴄᴛʟʏ ᴀᴍᴀᴢᴏɴ ɢɪꜰᴛ ᴄᴀʀᴅ ᴠᴏᴜᴄʜᴇʀ. ᴏᴛʜᴇʀ ᴄᴀʀᴅs ɴᴏᴛ ᴀᴄᴄᴇᴘᴛᴇᴅ ᴏɴʟʏ ᴀᴍᴀᴢᴏɴ ɢɪꜰᴛ ᴄᴀʀᴅ.\n\n"
-                    f"⚠️ ᴍᴀᴋᴇ sᴜʀᴇ ᴛʜᴇ ɢɪꜰᴛ ᴄᴀʀᴅ ᴀᴍᴏᴜɴᴛ ᴍᴀᴛᴄʜᴇs ᴇxᴀᴄᴛʟʏ: ₹{plan['price']}\n"
-                    f"‼️ ɢɪꜰᴛ ᴄᴀʀᴅs ᴀʀᴇ ɴᴏɴ-ʀᴇꜰᴜɴᴅᴀʙʟᴇ"
-                ),
+            await query.message.edit_text(
+                f"🎁 <b>Gift Card Payment - {plan['duration']}</b>\n\n"
+                f"💰 <b>Amount:</b> ₹{plan['price']}\n"
+                f"⏰ <b>Duration:</b> {plan['duration']}\n\n"
+                f"📝 <b>Instructions:</b>\n"
+                f"1. Buy a gift card of ₹{plan['price']}\n"
+                f"2. Send the gift card details here\n"
+                f"3. Include card number and PIN\n\n"
+                f"⚠️ <b>Supported cards:</b> Amazon, Flipkart, Google Play",
                 reply_markup=InlineKeyboardMarkup([
-                    [
-                        InlineKeyboardButton("🎁 Send Gift Card", callback_data=f"send_gift_{user_id}")
-                    ],
-                    [
-                        InlineKeyboardButton("‹ Back to Plans", callback_data="premium"),
-                        InlineKeyboardButton("🔒 Close", callback_data="close")
-                    ]
+                    [InlineKeyboardButton("✅ Send Gift Card", callback_data=f"send_gift_{plan_key}")],
+                    [InlineKeyboardButton("❌ Cancel", callback_data="cancel_gift")]
                 ])
             )
 
-    # Handle "Send Gift Card" button
     elif data.startswith("send_gift_"):
-        user_id = int(data.split("_")[2])
+        plan_key = data.replace("send_gift_", "")
+        plan = PLANS.get(plan_key)
         
-        if user_id == query.from_user.id and user_id in pending_gift_cards:
-            gift_card_info = pending_gift_cards[user_id]
-            
-            # Mark user as waiting for gift card details
-            waiting_for_gift_card[user_id] = True
-            
-            await query.message.edit_caption(
-                caption=(
-                    f"🎁 sᴇɴᴅ ɢɪꜰᴛ ᴄᴀʀᴅ ᴅᴇᴛᴀɪʟs\n\n"
-                    f"📋 ᴘʟᴀɴ: {gift_card_info['duration']} - ₹{gift_card_info['amount']}\n\n"
-                    f"📤 ɴᴏᴡ sᴇɴᴅ ᴅɪʀᴇᴄᴛ ʟɪɴᴋ ᴛᴏ ᴄʟᴀɪᴍ ɢɪꜰᴛ ᴄᴀʀᴅ.\n"
-                    f"🎫 ɢɪꜰᴛ ᴄᴀʀᴅ ɪᴅ. ᴏʀ ʏᴏᴜ ᴄᴀɴ sᴇɴᴅ sᴄʀᴇᴇɴsʜᴏᴛ\n"
-                    f"📸 ᴍᴀᴋᴇ sᴜʀᴇ sᴄʀᴇᴇɴsʜᴏᴛ ɪɴᴄʟᴜᴅᴇᴅ ɢɪꜰᴛ ᴄᴀʀᴅ ʀᴇᴅᴇᴇᴍ ɪᴅ\n\n"
-                    f"⚡ ɢɪꜰᴛ ᴄᴀʀᴅ ᴡɪʟʟ ʙᴇ ꜰᴏʀᴡᴀʀᴅᴇᴅ ᴛᴏ ᴏᴡɴᴇʀ ꜰᴏʀ ᴠᴇʀɪꜰɪᴄᴀᴛɪᴏɴ."
-                ),
-                reply_markup=InlineKeyboardMarkup([
-                    [
-                        InlineKeyboardButton("‹ Back to Payment", callback_data=f"payment_gift_{gift_card_info['plan']}"),
-                        InlineKeyboardButton("🔒 Close", callback_data="close")
-                    ]
-                ])
-            )
-        else:
-            await query.answer("Invalid gift card session. Please start again.", show_alert=True)
+        waiting_for_gift_card[query.from_user.id] = True
+        
+        await query.message.edit_text(
+            f"🎁 <b>Gift Card Submission</b>\n\n"
+            f"💰 <b>Amount:</b> ₹{plan['price']}\n"
+            f"⏰ <b>Duration:</b> {plan['duration']}\n\n"
+            f"📝 <b>Please send your gift card details in this format:</b>\n\n"
+            f"<code>Card Type: Amazon/Flipkart/Google Play\n"
+            f"Card Number: XXXX-XXXX-XXXX\n"
+            f"PIN: XXXX\n"
+            f"Amount: ₹{plan['price']}</code>\n\n"
+            f"⚠️ Make sure all details are correct!",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("❌ Cancel", callback_data="cancel_gift")]
+            ])
+        )
 
-    elif data == "close":
-        # Remove user from waiting states when closing
+    elif data == "cancel_gift":
         user_id = query.from_user.id
-        if user_id in waiting_for_screenshot:
-            del waiting_for_screenshot[user_id]
-        if user_id in pending_payments:
-            del pending_payments[user_id]
-        if user_id in waiting_for_gift_card:
-            del waiting_for_gift_card[user_id]
         if user_id in pending_gift_cards:
             del pending_gift_cards[user_id]
-            
-        await query.message.delete()
+        if user_id in waiting_for_gift_card:
+            del waiting_for_gift_card[user_id]
+        
+        await query.message.edit_text(
+            "❌ <b>Gift card payment cancelled</b>\n\n"
+            "You can try again anytime by using the premium option.",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔄 Try Again", callback_data="premium")]
+            ])
+        )
+
+    # Handle force sub reload
+    elif data == "reload":
         try:
-            await query.message.reply_to_message.delete()
+            await query.message.delete()
         except:
             pass
+        await query.message.reply("/start")
 
+    # Handle force sub request callbacks
     elif data.startswith("rfs_ch_"):
-        cid = int(data.split("_")[2])
+        channel_id = int(data.replace("rfs_ch_", ""))
+        current_mode = await db.get_channel_mode(channel_id)
+        
+        if current_mode == "on":
+            await db.set_channel_mode(channel_id, "off")
+            new_status = "🔴 OFF"
+        else:
+            await db.set_channel_mode(channel_id, "on")
+            new_status = "🟢 ON"
+        
         try:
-            chat = await client.get_chat(cid)
-            mode = await db.get_channel_mode(cid)
-            status = "🟢 ᴏɴ" if mode == "on" else "🔴 ᴏғғ"
-            new_mode = "ᴏғғ" if mode == "on" else "on"
-            buttons = [
-                [InlineKeyboardButton(f"ʀᴇǫ ᴍᴏᴅᴇ {'OFF' if mode == 'on' else 'ON'}", callback_data=f"rfs_toggle_{cid}_{new_mode}")],
-                [InlineKeyboardButton("‹ ʙᴀᴄᴋ", callback_data="fsub_back")]
-            ]
-            await query.message.edit_text(
-                f"Channel: {chat.title}\nCurrent Force-Sub Mode: {status}",
-                reply_markup=InlineKeyboardMarkup(buttons)
-            )
-        except Exception:
-            await query.answer("Failed to fetch channel info", show_alert=True)
-
-    elif data.startswith("rfs_toggle_"):
-        cid, action = data.split("_")[2:]
-        cid = int(cid)
-        mode = "on" if action == "on" else "off"
-
-        await db.set_channel_mode(cid, mode)
-        await query.answer(f"Force-Sub set to {'ON' if mode == 'on' else 'OFF'}")
-
-        # Refresh the same channel's mode view
-        chat = await client.get_chat(cid)
-        status = "🟢 ON" if mode == "on" else "🔴 OFF"
-        new_mode = "off" if mode == "on" else "on"
-        buttons = [
-            [InlineKeyboardButton(f"ʀᴇǫ ᴍᴏᴅᴇ {'OFF' if mode == 'on' else 'ON'}", callback_data=f"rfs_toggle_{cid}_{new_mode}")],
-            [InlineKeyboardButton("‹ ʙᴀᴄᴋ", callback_data="fsub_back")]
-        ]
-        await query.message.edit_text(
-            f"Channel: {chat.title}\nCurrent Force-Sub Mode: {status}",
-            reply_markup=InlineKeyboardMarkup(buttons)
-        )
-
-    elif data == "fsub_back":
+            chat = await client.get_chat(channel_id)
+            await query.answer(f"Force-Sub for {chat.title} is now {new_status}", show_alert=True)
+        except:
+            await query.answer(f"Force-Sub for {channel_id} is now {new_status}", show_alert=True)
+        
+        # Refresh the buttons
+        temp = await query.message.edit_text("<b><i>ᴜᴘᴅᴀᴛɪɴɢ...</i></b>")
         channels = await db.show_channels()
         buttons = []
-        for cid in channels:
+        for ch_id in channels:
             try:
-                chat = await client.get_chat(cid)
-                mode = await db.get_channel_mode(cid)
+                chat = await client.get_chat(ch_id)
+                mode = await db.get_channel_mode(ch_id)
                 status = "🟢" if mode == "on" else "🔴"
-                buttons.append([InlineKeyboardButton(f"{status} {chat.title}", callback_data=f"rfs_ch_{cid}")])
+                title = f"{status} {chat.title}"
+                buttons.append([InlineKeyboardButton(title, callback_data=f"rfs_ch_{ch_id}")])
             except:
-                continue
-
-        await query.message.edit_text(
-            "sᴇʟᴇᴄᴛ ᴀ ᴄʜᴀɴɴᴇʟ ᴛᴏ ᴛᴏɢɢʟᴇ ɪᴛs ғᴏʀᴄᴇ-sᴜʙ ᴍᴏᴅᴇ:",
+                buttons.append([InlineKeyboardButton(f"⚠️ {ch_id} (Unavailable)", callback_data=f"rfs_ch_{ch_id}")])
+        
+        buttons.append([InlineKeyboardButton("Close ✖️", callback_data="close")])
+        
+        await temp.edit(
+            "<b>⚡ Select a channel to toggle Force-Sub Mode:</b>",
             reply_markup=InlineKeyboardMarkup(buttons)
         )
 
-# Custom filter function to check if user is waiting for screenshot
-def screenshot_filter(_, __, message):
-    user_id = message.from_user.id
-    return user_id in waiting_for_screenshot and user_id in pending_payments
+    elif data == "close":
+        await query.message.delete()
 
-# Create the custom filter
-waiting_screenshot_filter = filters.create(screenshot_filter)
+    # Handle admin approval/rejection for regular premium
+    elif data.startswith("approve_"):
+        user_id = int(data.split("_")[1])
+        days = int(data.split("_")[2])
+        
+        from database.db_premium import add_premium_user
+        success = await add_premium_user(user_id, days)
+        
+        if success:
+            # Notify user
+            try:
+                await client.send_message(
+                    user_id,
+                    f"🎉 <b>Premium Activated!</b>\n\n"
+                    f"✅ Your payment has been verified!\n"
+                    f"⏰ <b>Duration:</b> {days} days\n\n"
+                    f"Thank you for choosing premium! 💎"
+                )
+            except:
+                pass
+            
+            await query.message.edit_caption(
+                query.message.caption + f"\n\n✅ <b>APPROVED by {query.from_user.first_name}</b>"
+            )
+            
+            # Clean up
+            if user_id in pending_payments:
+                del pending_payments[user_id]
+        else:
+            await query.answer("❌ Failed to activate premium!", show_alert=True)
 
-# Handle payment screenshots ONLY when user is specifically waiting
-@Bot.on_message(filters.photo & filters.private & waiting_screenshot_filter)
-async def handle_payment_screenshot(client: Bot, message: Message):
-    user_id = message.from_user.id
-    payment_info = pending_payments[user_id]
-    
-    # Forward screenshot to owner
-    try:
-        owner_caption = (
-            f"💳 Payment Screenshot Received\n\n"
-            f"👤 User: {message.from_user.first_name} (@{message.from_user.username})\n"
-            f"🆔 User ID: {user_id}\n"
-            f"📋 Plan: {payment_info['duration']} - ₹{payment_info['amount']}\n\n"
-            f"⚡ Please verify and activate premium"
+    elif data.startswith("reject_"):
+        user_id = int(data.split("_")[1])
+        
+        # Notify user
+        try:
+            await client.send_message(
+                user_id,
+                "❌ <b>Payment Rejected</b>\n\n"
+                "Your premium payment was not approved.\n"
+                "Please contact support for assistance."
+            )
+        except:
+            pass
+        
+        await query.message.edit_caption(
+            query.message.caption + f"\n\n❌ <b>REJECTED by {query.from_user.first_name}</b>"
         )
         
+        # Clean up
+        if user_id in pending_payments:
+            del pending_payments[user_id]
+
+    # Handle gift card admin approval/rejection
+    elif data.startswith("gift_approve_"):
+        user_id = int(data.split("_")[2])
+        days = int(data.split("_")[3])
+        
+        from database.db_premium import add_premium_user
+        success = await add_premium_user(user_id, days)
+        
+        if success:
+            # Notify user
+            try:
+                await client.send_message(
+                    user_id,
+                    f"🎉 <b>Premium Activated!</b>\n\n"
+                    f"✅ Your gift card has been verified!\n"
+                    f"⏰ <b>Duration:</b> {days} days\n\n"
+                    f"Thank you for choosing premium! 💎"
+                )
+            except:
+                pass
+            
+            await query.message.edit_text(
+                query.message.text + f"\n\n✅ <b>APPROVED by {query.from_user.first_name}</b>"
+            )
+            
+            # Clean up
+            if user_id in pending_gift_cards:
+                del pending_gift_cards[user_id]
+        else:
+            await query.answer("❌ Failed to activate premium!", show_alert=True)
+
+    elif data.startswith("gift_reject_"):
+        user_id = int(data.split("_")[2])
+        
+        # Notify user
+        try:
+            await client.send_message(
+                user_id,
+                "❌ <b>Gift Card Rejected</b>\n\n"
+                "Your gift card was not approved.\n"
+                "Please contact support for assistance."
+            )
+        except:
+            pass
+        
+        await query.message.edit_text(
+            query.message.text + f"\n\n❌ <b>REJECTED by {query.from_user.first_name}</b>"
+        )
+        
+        # Clean up
+        if user_id in pending_gift_cards:
+            del pending_gift_cards[user_id]
+
+# Handle screenshot submissions for regular premium
+@Bot.on_message(filters.private & filters.photo)
+async def handle_screenshot(client: Bot, message: Message):
+    user_id = message.from_user.id
+    
+    # Check if user is waiting to send screenshot for regular premium
+    if user_id in waiting_for_screenshot and user_id in pending_payments:
+        payment_info = pending_payments[user_id]
+        
+        # Forward screenshot to owner
         await client.send_photo(
             chat_id=OWNER_ID,
             photo=message.photo.file_id,
-            caption=owner_caption
-        )
-        
-        # Confirm to user
-        await message.reply_text(
-            f"✅ ʏᴏᴜʀ ᴘᴀʏᴍᴇɴᴛ sᴄʀᴇᴇɴsʜᴏᴛ ʜᴀs ʙᴇᴇɴ sᴇɴᴛ ᴛᴏ ᴛʜᴇ ᴏᴡɴᴇʀ ꜰᴏʀ ᴠᴇʀɪꜰɪᴄᴀᴛɪᴏɴ.\n\n"
-            f"⏳ ᴘʟᴇᴀsᴇ ᴡᴀɪᴛ ꜰᴏʀ ᴀᴘᴘʀᴏᴠᴀʟ. ʏᴏᴜ ᴡɪʟʟ ʙᴇ ɴᴏᴛɪꜰɪᴇᴅ ᴏɴᴄᴇ ʏᴏᴜʀ ᴘʀᴇᴍɪᴜᴍ ɪs ᴀᴄᴛɪᴠᴀᴛᴇᴅ.",
+            caption=(
+                f"💎 <b>Premium Payment Screenshot</b>\n\n"
+                f"👤 <b>User:</b> {message.from_user.first_name}\n"
+                f"🆔 <b>User ID:</b> <code>{user_id}</code>\n"
+                f"💰 <b>Amount:</b> ₹{payment_info['amount']}\n"
+                f"⏰ <b>Duration:</b> {payment_info['duration']}\n"
+                f"📅 <b>Days:</b> {payment_info['days']}\n\n"
+                f"✅ Use: <code>/addpremium {user_id} {payment_info['days']}</code>"
+            ),
             reply_markup=InlineKeyboardMarkup([
                 [
-                    InlineKeyboardButton("🏠 Home", callback_data="start"),
-                    InlineKeyboardButton("📢 Channel", url="https://t.me/+f4n8nwqVzFhiMmUx")
+                    InlineKeyboardButton("✅ Approve", callback_data=f"approve_{user_id}_{payment_info['days']}"),
+                    InlineKeyboardButton("❌ Reject", callback_data=f"reject_{user_id}")
                 ]
             ])
         )
         
-        # Remove user from waiting state after screenshot is processed
+        # Confirm to user
+        await message.reply(
+            f"✅ <b>Screenshot received!</b>\n\n"
+            f"📝 Your premium payment is under review.\n"
+            f"💰 Amount: ₹{payment_info['amount']}\n"
+            f"⏰ Duration: {payment_info['duration']}\n\n"
+            f"🕐 You'll be notified once verified (usually within 24 hours)."
+        )
+        
+        # Clean up
         del waiting_for_screenshot[user_id]
-        
-    except Exception as e:
-        await message.reply_text("❌ Failed to forward screenshot. Please contact admin directly.")
-        print(f"Error forwarding screenshot: {e}")
 
-# Custom filter function to check if user is waiting for gift card
-def gift_card_filter(_, __, message):
+# Handle gift card submissions
+@Bot.on_message(filters.private & filters.text & ~filters.command(['start', 'help']))
+async def handle_gift_card(client: Bot, message: Message):
     user_id = message.from_user.id
-    return user_id in waiting_for_gift_card and user_id in pending_gift_cards
-
-# Create the custom filter for gift cards
-waiting_gift_card_filter = filters.create(gift_card_filter)
-
-# Handle gift card submissions (text or photo)
-@Bot.on_message((filters.text | filters.photo) & filters.private & waiting_gift_card_filter)
-async def handle_gift_card_submission(client: Bot, message: Message):
-    user_id = message.from_user.id
-    gift_card_info = pending_gift_cards[user_id]
     
-    try:
-        # Prepare owner message based on message type
-        if message.photo:
-            # Forward gift card screenshot to owner
-            owner_caption = (
-                f"🎁 Gift Card Screenshot Received\n\n"
-                f"👤 User: {message.from_user.first_name} (@{message.from_user.username})\n"
-                f"🆔 User ID: {user_id}\n"
-                f"📋 Plan: {gift_card_info['duration']} - ₹{gift_card_info['amount']}\n\n"
-                f"⚡ Please verify gift card and activate premium"
-            )
-            
-            await client.send_photo(
-                chat_id=OWNER_ID,
-                photo=message.photo.file_id,
-                caption=owner_caption
-            )
-        else:
-            # Forward gift card text/code to owner
-            owner_message = (
-                f"🎁 Gift Card Code/Link Received\n\n"
-                f"👤 User: {message.from_user.first_name} (@{message.from_user.username})\n"
-                f"🆔 User ID: {user_id}\n"
-                f"📋 Plan: {gift_card_info['duration']} - ₹{gift_card_info['amount']}\n\n"
-                f"🎫 Gift Card Details:\n{message.text}\n\n"
-                f"⚡ Please verify gift card and activate premium"
-            )
-            
-            await client.send_message(
-                chat_id=OWNER_ID,
-                text=owner_message
-            )
+    # Check if user is waiting to send gift card details
+    if user_id in waiting_for_gift_card and user_id in pending_gift_cards:
+        gift_info = pending_gift_cards[user_id]
         
-        # Confirm to user
-        await message.reply_text(
-            f"✅ ʏᴏᴜʀ ɢɪꜰᴛ ᴄᴀʀᴅ ᴅᴇᴛᴀɪʟs ʜᴀᴠᴇ ʙᴇᴇɴ sᴇɴᴛ ᴛᴏ ᴛʜᴇ ᴏᴡɴᴇʀ ꜰᴏʀ ᴠᴇʀɪꜰɪᴄᴀᴛɪᴏɴ.\n\n"
-            f"⏳ ᴘʟᴇᴀsᴇ ᴡᴀɪᴛ ꜰᴏʀ ᴀᴘᴘʀᴏᴠᴀʟ. ʏᴏᴜ ᴡɪʟʟ ʙᴇ ɴᴏᴛɪꜰɪᴇᴅ ᴏɴᴄᴇ ʏᴏᴜʀ ᴘʀᴇᴍɪᴜᴍ ɪs ᴀᴄᴛɪᴠᴀᴛᴇᴅ.",
+        # Forward gift card details to owner
+        await client.send_message(
+            chat_id=OWNER_ID,
+            text=(
+                f"🎁 <b>Gift Card Payment Details</b>\n\n"
+                f"👤 <b>User:</b> {message.from_user.first_name}\n"
+                f"🆔 <b>User ID:</b> <code>{user_id}</code>\n"
+                f"💰 <b>Amount:</b> ₹{gift_info['amount']}\n"
+                f"⏰ <b>Duration:</b> {gift_info['duration']}\n"
+                f"📅 <b>Days:</b> {gift_info['days']}\n\n"
+                f"🎁 <b>Gift Card Details:</b>\n"
+                f"<code>{message.text}</code>\n\n"
+                f"✅ Use: <code>/addpremium {user_id} {gift_info['days']}</code>"
+            ),
             reply_markup=InlineKeyboardMarkup([
                 [
-                    InlineKeyboardButton("🏠 Home", callback_data="start"),
-                    InlineKeyboardButton("📢 Channel", url="https://t.me/+f4n8nwqVzFhiMmUx")
+                    InlineKeyboardButton("✅ Approve", callback_data=f"gift_approve_{user_id}_{gift_info['days']}"),
+                    InlineKeyboardButton("❌ Reject", callback_data=f"gift_reject_{user_id}")
                 ]
             ])
         )
         
-        # Remove user from waiting state after gift card is processed
-        del waiting_for_gift_card[user_id]
+        # Confirm to user
+        await message.reply(
+            f"✅ <b>Gift card details received!</b>\n\n"
+            f"📝 Your premium payment is under review.\n"
+            f"💰 Amount: ₹{gift_info['amount']}\n"
+            f"⏰ Duration: {gift_info['duration']}\n\n"
+            f"🕐 You'll be notified once verified (usually within 24 hours)."
+        )
         
-    except Exception as e:
-        await message.reply_text("❌ Failed to forward gift card details. Please contact admin directly.")
-        print(f"Error forwarding gift card: {e}")
+        # Clean up
+        del waiting_for_gift_card[user_id]
