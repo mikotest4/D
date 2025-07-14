@@ -5,18 +5,18 @@ from logging.handlers import RotatingFileHandler
 
 #--------------------------------------------
 #Bot token @Botfather
-TG_BOT_TOKEN = os.environ.get("TG_BOT_TOKEN", "7060418844:AAGKFWIK9h_H6zIWWVzSw2ul2fqElOa_b-Q")
+TG_BOT_TOKEN = os.environ.get("TG_BOT_TOKEN", "7819249411:AAFnHhPU6I4DkCsMlNItsGIw0yNYx-tFMNs")
 APP_ID = int(os.environ.get("APP_ID", "28614709")) #Your API ID from my.telegram.org
 API_HASH = os.environ.get("API_HASH", "f36fd2ee6e3d3a17c4d244ff6dc1bac8") #Your API Hash from my.telegram.org
 #--------------------------------------------
 
-CHANNEL_ID = int(os.environ.get("CHANNEL_ID", "-1002574894627")) #Your db channel Id
-OWNER = os.environ.get("OWNER", "Lusiferhdhdjsj") # Owner username without @
-OWNER_ID = int(os.environ.get("OWNER_ID", "6010797751")) # Owner id
+CHANNEL_ID = int(os.environ.get("CHANNEL_ID", "-1002583602391")) #Your db channel Id
+OWNER = os.environ.get("OWNER", "Mikoyae756") # Owner username without @
+OWNER_ID = int(os.environ.get("OWNER_ID", "7970350353")) # Owner id
 #--------------------------------------------
-PORT = os.environ.get("PORT", "3423")
+PORT = os.environ.get("PORT", "3333")
 #--------------------------------------------
-DB_URI = os.environ.get("DATABASE_URL", "mongodb+srv://Snap:Aloksingh@cluster0.lob2orr.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0")
+DB_URI = os.environ.get("DATABASE_URL", "mongodb+srv://Koi:aloksingh@cluster0.86wo9.mongodb.net/?retryWrites=true&w=majority")
 DB_NAME = os.environ.get("DATABASE_NAME", "Snap")
 #--------------------------------------------
 BAN_SUPPORT = os.environ.get("BAN_SUPPORT", None)
