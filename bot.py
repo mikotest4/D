@@ -68,13 +68,13 @@ class Bot(Client):
             test = await self.send_message(chat_id = db_channel.id, text = "Test Message")
             await test.delete()
         except Exception as e:
-            self.LOGGER(__name__).warning(e)
-            self.LOGGER(__name__).warning(f"Make Sure bot is Admin in DB Channel, and Double check the CHANNEL_ID Value, Current Value {CHANNEL_ID}")
-            self.LOGGER(__name__).info("\nBot Stopped.")
+            self.LOGGER.warning(e)  # Fixed: Remove () after LOGGER
+            self.LOGGER.warning(f"Make Sure bot is Admin in DB Channel, and Double check the CHANNEL_ID Value, Current Value {CHANNEL_ID}")  # Fixed: Remove () after LOGGER
+            self.LOGGER.info("\nBot Stopped.")  # Fixed: Remove () after LOGGER
             sys.exit()
 
         self.set_parse_mode(ParseMode.HTML)
-        self.LOGGER(__name__).info(f"ʙᴏᴛ ʀᴜɴɴɪɴɢ ᴍᴀᴅᴇ ʙʏ ʏᴀᴇ ᴍɪᴋᴏ")
+        self.LOGGER.info(f"ʙᴏᴛ ʀᴜɴɴɪɴɢ ᴍᴀᴅᴇ ʙʏ ʏᴀᴇ ᴍɪᴋᴏ")  # Fixed: Remove () after LOGGER
     
         # Start Web Server
         app = web.AppRunner(await web_server())
@@ -87,16 +87,16 @@ class Bot(Client):
 
     async def stop(self, *args):
         await super().stop()
-        self.LOGGER(__name__).info("Bot stopped.")
+        self.LOGGER.info("Bot stopped.")  # Fixed: Remove () after LOGGER
 
     def run(self):
         """Run the bot."""
         loop = asyncio.get_event_loop()
         loop.run_until_complete(self.start())
-        self.LOGGER(__name__).info("ʙᴏᴛ ɪs ɴᴏᴡ ʀᴜɴɴɪɴɢ")
+        self.LOGGER.info("ʙᴏᴛ ɪs ɴᴏᴡ ʀᴜɴɴɪɴɢ")  # Fixed: Remove () after LOGGER
         try:
             loop.run_forever()
         except KeyboardInterrupt:
-            self.LOGGER(__name__).info( "sʜᴜᴛᴛɪɴɢ ᴅᴏᴡɴ...")
+            self.LOGGER.info("sʜᴜᴛᴛɪɴɢ ᴅᴏᴡɴ...")  # Fixed: Remove () after LOGGER
         finally:
             loop.run_until_complete(self.stop())
