@@ -10,6 +10,7 @@ from datetime import datetime
 from config import *
 from database.db_premium import *
 from database.database import *
+from database.db_super_prime import remove_expired_super_prime_users
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import logging
 
@@ -18,6 +19,7 @@ logging.getLogger("apscheduler").setLevel(logging.WARNING)
 
 scheduler = AsyncIOScheduler(timezone="Asia/Kolkata")
 scheduler.add_job(remove_expired_users, "interval", seconds=10)
+scheduler.add_job(remove_expired_super_prime_users, "interval", seconds=300)  # Every 5 minutes
 
 # Reset verify count for all users daily at 00:00 IST
 async def daily_reset_task():
