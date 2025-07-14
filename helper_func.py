@@ -13,6 +13,7 @@ from shortzy import Shortzy
 from pyrogram.errors import FloodWait
 from database.database import *
 from database.db_premium import *
+from database.db_super_prime import is_super_prime_user
 import logging
 
 # Don't Remove Credit @CodeFlix_Bots, @rohit_1888
@@ -65,6 +66,20 @@ async def is_premium_user_enhanced(user_id):
     except Exception as e:
         logging.error(f"Error in enhanced premium check for user {user_id}: {e}")
         return False
+
+# Check if content should be protected for this user
+async def should_protect_content(user_id):
+    """Check if content should be protected for this user"""
+    # Super Prime users can forward/save content
+    if await is_super_prime_user(user_id):
+        return False
+    
+    # Regular premium users still have protection
+    if await is_premium_user(user_id):
+        return True
+    
+    # Non-premium users have protection
+    return True
 
 # Don't Remove Credit @CodeFlix_Bots, @rohit_1888
 # Ask Doubt on telegram @CodeflixSupport
@@ -128,12 +143,54 @@ async def is_sub(client, user_id, channel_id):
             exists = await db.req_user_exist(channel_id, user_id)
             #print(f"[REQ] User {user_id} join request for {channel_id}: {exists}")
             return exists
-        #print(f"[NOT SUB] User {user_id} not in {channel_id} and mode != on")
         return False
 
     except Exception as e:
-        print(f"[!] Error in is_sub(): {e}")
+        print(f"[SUB] Error checking subscription for {user_id} in {channel_id}: {e}")
         return False
+
+# Don't Remove Credit @CodeFlix_Bots, @rohit_1888
+# Ask Doubt on telegram @CodeflixSupport
+#
+# Copyright (C) 2025 by Codeflix-Bots@Github, < https://github.com/Codeflix-Bots >.
+#
+# This file is part of < https://github.com/Codeflix-Bots/FileStore > project,
+# and is released under the MIT License.
+# Please see < https://github.com/Codeflix-Bots/FileStore/blob/master/LICENSE >
+#
+# All rights reserved.
+#
+
+async def not_joined(client, message):
+    channels = await db.show_channels()
+    if not channels:
+        return True
+
+    buttons = []
+    for channel_id in channels:
+        try:
+            chat = await client.get_chat(channel_id)
+            if chat.username:
+                url = f"https://t.me/{chat.username}"
+            else:
+                url = f"https://t.me/c/{str(channel_id)[4:]}"
+            buttons.append([InlineKeyboardButton(text=chat.title, url=url)])
+        except:
+            buttons.append([InlineKeyboardButton(text=f"Channel {channel_id}", url=f"https://t.me/c/{str(channel_id)[4:]}")])
+
+    try:
+        buttons.append([InlineKeyboardButton(text='♻️ Reload', callback_data='reload')])
+        await message.reply_photo(
+            photo=FORCE_PIC,
+            caption=FORCE_MSG.format(first=message.from_user.first_name),
+            reply_markup=InlineKeyboardMarkup(buttons)
+        )
+    except:
+        await message.reply_text(
+            text=FORCE_MSG.format(first=message.from_user.first_name),
+            reply_markup=InlineKeyboardMarkup(buttons)
+        )
+    return False
 
 # Don't Remove Credit @CodeFlix_Bots, @rohit_1888
 # Ask Doubt on telegram @CodeflixSupport
@@ -149,34 +206,15 @@ async def is_sub(client, user_id, channel_id):
 
 async def encode(string):
     string_bytes = string.encode("ascii")
-    base64_bytes = base64.urlsafe_b64encode(string_bytes)
-    base64_string = (base64_bytes.decode("ascii")).strip("=")
+    base64_bytes = base64.b64encode(string_bytes)
+    base64_string = base64_bytes.decode("ascii")
     return base64_string
 
 async def decode(base64_string):
-    base64_string = base64_string.strip("=") # links generated before this commit will be having = sign, hence striping them to handle padding errors.
-    base64_bytes = (base64_string + "=" * (-len(base64_string) % 4)).encode("ascii")
-    string_bytes = base64.urlsafe_b64decode(base64_bytes) 
+    base64_bytes = base64_string.encode("ascii")
+    string_bytes = base64.b64decode(base64_bytes)
     string = string_bytes.decode("ascii")
     return string
-
-async def get_messages(client, message_ids):
-    messages = []
-    total_messages = 0
-    while total_messages != len(message_ids):
-        temb_ids = message_ids[total_messages:total_messages+200]
-        try:
-            msgs = await client.get_messages(
-                chat_id=client.db_channel.id,
-                message_ids=temb_ids
-            )
-            messages.extend(msgs)
-            total_messages += len(temb_ids)
-        except FloodWait as e:
-            await asyncio.sleep(e.x)
-        except:
-            pass
-    return messages
 
 async def get_message_id(client, message):
     if message.forward_from_chat:
@@ -184,11 +222,11 @@ async def get_message_id(client, message):
             return message.forward_from_message_id
         else:
             return 0
-    elif message.forward_sender_name:
+    elif message.forward_from:
         return 0
     elif message.text:
         pattern = "https://t.me/(?:c/)?(.*?)/(\\d+)"
-        matches = re.match(pattern,message.text)
+        matches = re.match(pattern, message.text)
         if not matches:
             return 0
         channel_id = matches.group(1)
@@ -197,52 +235,37 @@ async def get_message_id(client, message):
             if f"-100{channel_id}" == str(client.db_channel.id):
                 return msg_id
         else:
-            if channel_id == client.db_channel.username:
+            if channel_id == client.username:
                 return msg_id
     else:
         return 0
 
-def get_readable_time(seconds: int) -> str:
-    count = 0
-    up_time = ""
-    time_list = []
-    time_suffix_list = ["s", "m", "h", "days"]
-    while count < 4:
-        count += 1
-        remainder, result = divmod(seconds, 60) if count < 3 else divmod(seconds, 24)
-        if seconds == 0 and remainder == 0:
-            break
-        time_list.append(int(result))
-        seconds = int(remainder)
-    hmm = len(time_list)
-    for i in range(hmm):
-        time_list[i] = str(time_list[i]) + time_suffix_list[i]
-    if len(time_list) == 4:
-        up_time += f"{time_list.pop()}, "
-    time_list.reverse()
-    up_time += ":".join(time_list)
-    return up_time
+def get_readable_time(seconds):
+    result = ''
+    (days, remainder) = divmod(seconds, 86400)
+    days = int(days)
+    if days != 0:
+        result += f'{days}d'
+    (hours, remainder) = divmod(remainder, 3600)
+    hours = int(hours)
+    if hours != 0:
+        result += f'{hours}h'
+    (minutes, seconds) = divmod(remainder, 60)
+    minutes = int(minutes)
+    if minutes != 0:
+        result += f'{minutes}m'
+    seconds = int(seconds)
+    result += f'{seconds}s'
+    return result
 
 def get_exp_time(seconds):
     periods = [('d', 86400), ('h', 3600), ('m', 60), ('s', 1)]
-    result = []
+    result = ''
     for period_name, period_seconds in periods:
         if seconds >= period_seconds:
             period_value, seconds = divmod(seconds, period_seconds)
-            result.append(f"{int(period_value)}{period_name}")
-    return " ".join(result) if result else "0s"
-
-async def get_shortlink(url, api, link):
-    shortzy = Shortzy(api_key=api, base_site=url)
-    try:
-        link = await shortzy.convert(link)
-        return link
-    except Exception as e:
-        logger.error(e)
-        return link
-
-# Enhanced admin filter with automatic premium validation
-admin = filters.create(check_admin)
+            result += f'{period_value}{period_name}'
+    return result
 
 # Don't Remove Credit @CodeFlix_Bots, @rohit_1888
 # Ask Doubt on telegram @CodeflixSupport
@@ -255,3 +278,14 @@ admin = filters.create(check_admin)
 #
 # All rights reserved.
 #
+
+async def get_shortlink(url, api, link):
+    shortzy = Shortzy(api_key=api, base_site=url)
+    try:
+        link = await shortzy.convert(link)
+        return link
+    except Exception as e:
+        print(f"Error in get_shortlink: {e}")
+        return link
+
+admin = filters.create(check_admin)
